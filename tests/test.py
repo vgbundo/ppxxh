@@ -8,6 +8,11 @@ import unittest
 import ppxxh
 
 
+# Convert bytes to a 32-bit big-endian unsigned integer.
+def ifb32_big(b, offset=0):
+    return struct.unpack_from(">I", b, offset)[0]
+
+
 # Convert bytes to a 64-bit big-endian unsigned integer.
 def ifb64_big(b, offset=0):
     return struct.unpack_from(">Q", b, offset)[0]
@@ -221,6 +226,105 @@ def single_byte_updates(xx, data):
 
 
 class Test_sanity_checks(unittest.TestCase):
+    def test_xxh32_no_updates(self):
+        for length, seed, hash in testdata_xxh32:
+            with self.subTest(
+                length=length, seed_hex=hex(seed), hash_hex=hex(hash)
+            ):
+                self.assertEqual(
+                    ppxxh.xxh32(sanity_buffer[:length], seed=seed).intdigest(),
+                    hash,
+                )
+                self.assertEqual(
+                    ifb32_big(
+                        ppxxh.xxh32(sanity_buffer[:length], seed=seed).digest()
+                    ),
+                    hash,
+                )
+                self.assertEqual(
+                    ifb32_big(
+                        bytes.fromhex(
+                            ppxxh.xxh32(
+                                sanity_buffer[:length], seed=seed
+                            ).hexdigest()
+                        )
+                    ),
+                    hash,
+                )
+
+    # streaming oneshot
+    def test_xxh32_intdigest_so(self):
+        for length, seed, hash in testdata_xxh32:
+            with self.subTest(
+                length=length, seed_hex=hex(seed), hash_hex=hex(hash)
+            ):
+                xx = ppxxh.xxh32(seed=seed)
+                xx.update(sanity_buffer[:length])
+                self.assertEqual(xx.intdigest(), hash)
+                self.assertEqual(ifb32_big(xx.digest()), hash)
+                self.assertEqual(
+                    ifb32_big(bytes.fromhex(xx.hexdigest())), hash
+                )
+
+    # streaming random update lengths
+    def test_xxh32_intdigest_sr(self):
+        for r in range(rand_count):
+            for length, seed, hash in testdata_xxh32:
+                xx = ppxxh.xxh32(seed=seed)
+                nlist = random_updates(xx, sanity_buffer[:length])
+                with self.subTest(
+                    length=length,
+                    seed_hex=hex(seed),
+                    hash_hex=hex(hash),
+                    nlist=nlist,
+                ):
+                    self.assertEqual(xx.intdigest(), hash)
+                    self.assertEqual(ifb32_big(xx.digest()), hash)
+                    self.assertEqual(
+                        ifb32_big(bytes.fromhex(xx.hexdigest())), hash
+                    )
+
+    # streaming random update lengths using copies of xx
+    def test_xxh32_intdigest_src(self):
+        for r in range(rand_count):
+            for length, seed, hash in testdata_xxh32:
+                xx = ppxxh.xxh32(seed=seed)
+                xxc, nlist = random_updates_c(xx, sanity_buffer[:length])
+                with self.subTest(
+                    length=length,
+                    seed_hex=hex(seed),
+                    hash_hex=hex(hash),
+                    nlist=nlist,
+                ):
+                    self.assertEqual(xxc.intdigest(), hash)
+                    self.assertEqual(ifb32_big(xxc.digest()), hash)
+                    self.assertEqual(
+                        ifb32_big(bytes.fromhex(xxc.hexdigest())), hash
+                    )
+                    if length != 0:
+                        # confirm that xxc != xx
+                        # This uses the "private" property _total_length
+                        # to verify that xx and xxc are not the same
+                        # object and that changes made to xxc are not
+                        # mistakenly also applied to xx.
+                        self.assertNotEqual(
+                            xx._total_length, xxc._total_length
+                        )
+
+    # streaming single byte updates
+    def test_xxh32_intdigest_ss(self):
+        for length, seed, hash in testdata_xxh32:
+            with self.subTest(
+                length=length, seed_hex=hex(seed), hash_hex=hex(hash)
+            ):
+                xx = ppxxh.xxh32(seed=seed)
+                single_byte_updates(xx, sanity_buffer[:length])
+                self.assertEqual(xx.intdigest(), hash)
+                self.assertEqual(ifb32_big(xx.digest()), hash)
+                self.assertEqual(
+                    ifb32_big(bytes.fromhex(xx.hexdigest())), hash
+                )
+
     def test_xxh64_no_updates(self):
         for length, seed, hash in testdata_xxh64:
             with self.subTest(
@@ -322,7 +426,10 @@ class Test_sanity_checks(unittest.TestCase):
 # depending on the size of secret.  The values reported
 # by xxh3_*.block_size and shown below are for the default
 # secret size, which will be correct when the defaul secret is used.
-info = (("xxh64", 8, 32, ppxxh.xxh64),)
+info = (
+    ("xxh32", 4, 16, ppxxh.xxh32),
+    ("xxh64", 8, 32, ppxxh.xxh64),
+)
 
 
 class Test_hashlib_compatibility(unittest.TestCase):
@@ -357,7 +464,7 @@ class Test_hashlib_compatibility(unittest.TestCase):
                 self.assertEqual(cls().block_size, block_size)
 
 
-classes = [ppxxh.xxh64]
+classes = [ppxxh.xxh32, ppxxh.xxh64]
 
 
 # Verify that errors are raised when expected.
@@ -379,7 +486,10 @@ class Test_errortests(unittest.TestCase):
     def test_error_oversized_seed(self):
         # seed must not be larger than 64 bits (32 bits for xxh32)
         for name, __, __, cls in info:
-            maxseed = 0xFFFFFFFFFFFFFFFF
+            if name == "xxh32":
+                maxseed = 0xFFFFFFFF
+            else:
+                maxseed = 0xFFFFFFFFFFFFFFFF
             with self.subTest(name=name, maxseed=hex(maxseed)):
                 cls(seed=maxseed)  # should not raise an error
                 self.assertRaises(ValueError, cls, seed=maxseed + 1)
