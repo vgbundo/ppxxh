@@ -35,6 +35,7 @@ from ._top import new
 # class names for hashes are all lowercase rather than Titlecase
 # so that the class names match the names found in algorithms_guaranteed
 # which are all lowercase to conform to hashlib.
+from ._xxh32 import xxh32
 from ._xxh64 import xxh64
 
 __all__ = (
@@ -42,10 +43,11 @@ __all__ = (
     "algorithms_guaranteed",
     "algorithms_available",
     "new",
+    "xxh32",
     "xxh64",
 )
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 """Version of the ppxxh module."""
 
 XXHASH_VERSION = "0.8.1"
