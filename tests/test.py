@@ -52,6 +52,8 @@ bytegen = PRIME32
 for i in range(SANITY_BUFFER_SIZE):
     sanity_buffer.append((bytegen >> 56) & 0xFF)
     bytegen = (bytegen * PRIME64) & 0xFFFFFFFFFFFFFFFF  # 64 bit mask
+custom_secret_size = ppxxh.xxh3_64._SECRET_SIZE_MIN + 11
+custom_secret = sanity_buffer[7 : 7 + custom_secret_size]
 
 # Formatting of the following data does not conform to PEP8.
 # Instead extra whitespace is used to preserve the layout used in
@@ -95,6 +97,12 @@ testdata_xxh3_64 = [
     (   48, PRIME64, 0xADC2CBAA44ACC616),  # 33 - 64
     (   80,       0, 0xBCDEFBBB2C47C90A),  # 65 - 96
     (   80, PRIME64, 0xC6DD0CB699532E73),  # 65 - 96
+    # xsum_sanity_check.c does not include any tests of xxh3_64 with an input
+    # length of 97 - 128.  So, Add the following 2 lines to increase code 
+    # coverage
+    (  101,       0, 0xB7F2A5219A6ADCD6),  # 97 -128
+    (  101, PRIME64, 0x3F0B78B11279E491),  # 97 -128
+
     (  195,       0, 0xCD94217EE362EC3A),  # 129-240
     (  195, PRIME64, 0xBA68003D370CB3D9),  # 129-240
     # one block, last stripe is overlapping
@@ -150,6 +158,11 @@ testdata_xxh3_128 = [
   (  48, PRIME32, ( 0x7BA3C3E453A1934E, 0x163ADDE36C072295)),  # 33 - 64
   (  81,       0, ( 0x5E8BAFB9F95FB803, 0x4952F58181AB0042)),  # 65 - 96
   (  81, PRIME32, ( 0x703FBB3D7A5F755C, 0x2724EC7ADC750FB6)),  # 65 - 96
+  # xsum_sanity_check.c does not include any tests of xxh3_128 with an input
+  # length of 97 - 128.  So, Add the following to increase code coverage
+  ( 101,       0, ( 0x5E9E9ED01FC1F1CF, 0xF96034BF00411258)),  # 97 -128
+  ( 101, PRIME32, ( 0xD57FC3372CC4EBAB, 0x06A82AFCA3D7397C)),  # 97 -128
+
   ( 222,       0, ( 0xF1AEBD597CEC6B3A, 0x337E09641B948717)),  # 129-240
   ( 222, PRIME32, ( 0xAE995BB8AF917A8D, 0x91820016621E97F1)),  # 129-240
   # one block, last stripe is overlapping
@@ -420,6 +433,325 @@ class Test_sanity_checks(unittest.TestCase):
                     ifb64_big(bytes.fromhex(xx.hexdigest())), hash
                 )
 
+    def test_xxh3_64_no_updates(self):
+        for length, seed, hash in testdata_xxh3_64:
+            with self.subTest(
+                length=length, seed_hex=hex(seed), hash_hex=hex(hash)
+            ):
+                self.assertEqual(
+                    ppxxh.xxh3_64(
+                        sanity_buffer[:length], seed=seed
+                    ).intdigest(),
+                    hash,
+                )
+                self.assertEqual(
+                    ifb64_big(
+                        ppxxh.xxh3_64(
+                            sanity_buffer[:length], seed=seed
+                        ).digest()
+                    ),
+                    hash,
+                )
+                self.assertEqual(
+                    ifb64_big(
+                        bytes.fromhex(
+                            ppxxh.xxh3_64(
+                                sanity_buffer[:length], seed=seed
+                            ).hexdigest()
+                        )
+                    ),
+                    hash,
+                )
+
+    # streaming oneshot
+    def test_xxh3_64_intdigest_so(self):
+        for length, seed, hash in testdata_xxh3_64:
+            with self.subTest(
+                length=length, seed_hex=hex(seed), hash_hex=hex(hash)
+            ):
+                xx = ppxxh.xxh3_64(seed=seed)
+                xx.update(sanity_buffer[:length])
+                self.assertEqual(xx.intdigest(), hash)
+                self.assertEqual(ifb64_big(xx.digest()), hash)
+                self.assertEqual(
+                    ifb64_big(bytes.fromhex(xx.hexdigest())), hash
+                )
+
+    # streaming random update lengths
+    def test_xxh3_64_intdigest_sr(self):
+        for r in range(rand_count):
+            for length, seed, hash in testdata_xxh3_64:
+                xx = ppxxh.xxh3_64(seed=seed)
+                nlist = random_updates(xx, sanity_buffer[:length])
+                with self.subTest(
+                    length=length,
+                    seed_hex=hex(seed),
+                    hash_hex=hex(hash),
+                    nlist=nlist,
+                ):
+                    self.assertEqual(xx.intdigest(), hash)
+                    self.assertEqual(ifb64_big(xx.digest()), hash)
+                    self.assertEqual(
+                        ifb64_big(bytes.fromhex(xx.hexdigest())), hash
+                    )
+
+    # streaming random update lengths using copies of xx
+    def test_xxh3_64_intdigest_src(self):
+        for r in range(rand_count):
+            for length, seed, hash in testdata_xxh3_64:
+                xx = ppxxh.xxh3_64(seed=seed)
+                xxc, nlist = random_updates_c(xx, sanity_buffer[:length])
+                with self.subTest(
+                    length=length,
+                    seed_hex=hex(seed),
+                    hash_hex=hex(hash),
+                    nlist=nlist,
+                ):
+                    self.assertEqual(xxc.intdigest(), hash)
+                    self.assertEqual(ifb64_big(xxc.digest()), hash)
+                    self.assertEqual(
+                        ifb64_big(bytes.fromhex(xxc.hexdigest())), hash
+                    )
+                    if length != 0:
+                        # confirm that xxc != xx
+                        self.assertNotEqual(
+                            xx._total_length, xxc._total_length
+                        )
+
+    # streaming single byte updates
+    def test_xxh3_64_intdigest_ss(self):
+        for length, seed, hash in testdata_xxh3_64:
+            with self.subTest(
+                length=length, seed_hex=hex(seed), hash_hex=hex(hash)
+            ):
+                xx = ppxxh.xxh3_64(seed=seed)
+                single_byte_updates(xx, sanity_buffer[:length])
+                self.assertEqual(xx.intdigest(), hash)
+                self.assertEqual(ifb64_big(xx.digest()), hash)
+                self.assertEqual(
+                    ifb64_big(bytes.fromhex(xx.hexdigest())), hash
+                )
+
+    def test_xxh3_64_withsecret_no_updates(self):
+        for length, seed, hash in testdata_xxh3_64_withsecret:
+            with self.subTest(
+                length=length, seed_hex=hex(seed), hash_hex=hex(hash)
+            ):
+                self.assertEqual(
+                    ppxxh.xxh3_64(
+                        sanity_buffer[:length], seed=seed, secret=custom_secret
+                    ).intdigest(),
+                    hash,
+                )
+                self.assertEqual(
+                    ifb64_big(
+                        ppxxh.xxh3_64(
+                            sanity_buffer[:length],
+                            seed=seed,
+                            secret=custom_secret,
+                        ).digest()
+                    ),
+                    hash,
+                )
+                self.assertEqual(
+                    ifb64_big(
+                        bytes.fromhex(
+                            ppxxh.xxh3_64(
+                                sanity_buffer[:length],
+                                seed=seed,
+                                secret=custom_secret,
+                            ).hexdigest()
+                        )
+                    ),
+                    hash,
+                )
+
+    # streaming oneshot
+    def test_xxh3_64_withsecret_intdigest_so(self):
+        for length, seed, hash in testdata_xxh3_64_withsecret:
+            with self.subTest(
+                length=length, seed_hex=hex(seed), hash_hex=hex(hash)
+            ):
+                xx = ppxxh.xxh3_64(seed=seed, secret=custom_secret)
+                xx.update(sanity_buffer[:length])
+                self.assertEqual(xx.intdigest(), hash)
+                self.assertEqual(ifb64_big(xx.digest()), hash)
+                self.assertEqual(
+                    ifb64_big(bytes.fromhex(xx.hexdigest())), hash
+                )
+
+    # streaming random update lengths
+    def test_xxh3_64_withsecret_intdigest_sr(self):
+        for r in range(rand_count):
+            for length, seed, hash in testdata_xxh3_64_withsecret:
+                xx = ppxxh.xxh3_64(seed=seed, secret=custom_secret)
+                nlist = random_updates(xx, sanity_buffer[:length])
+                with self.subTest(
+                    length=length,
+                    seed_hex=hex(seed),
+                    hash_hex=hex(hash),
+                    nlist=nlist,
+                ):
+                    self.assertEqual(xx.intdigest(), hash)
+                    self.assertEqual(ifb64_big(xx.digest()), hash)
+                    self.assertEqual(
+                        ifb64_big(bytes.fromhex(xx.hexdigest())), hash
+                    )
+
+    # streaming random update lengths using copies of xx
+    def test_xxh3_64_withsecret_intdigest_src(self):
+        for r in range(rand_count):
+            for length, seed, hash in testdata_xxh3_64_withsecret:
+                xx = ppxxh.xxh3_64(seed=seed, secret=custom_secret)
+                xxc, nlist = random_updates_c(xx, sanity_buffer[:length])
+                with self.subTest(
+                    length=length,
+                    seed_hex=hex(seed),
+                    hash_hex=hex(hash),
+                    nlist=nlist,
+                ):
+                    self.assertEqual(xxc.intdigest(), hash)
+                    self.assertEqual(ifb64_big(xxc.digest()), hash)
+                    self.assertEqual(
+                        ifb64_big(bytes.fromhex(xxc.hexdigest())), hash
+                    )
+                    if length != 0:
+                        # confirm that xxc != xx
+                        self.assertNotEqual(
+                            xx._total_length, xxc._total_length
+                        )
+
+    # streaming single byte updates
+    def test_xxh3_64_withsecret_intdigest_ss(self):
+        for r in range(rand_count):
+            for length, seed, hash in testdata_xxh3_64_withsecret:
+                with self.subTest(
+                    length=length, seed_hex=hex(seed), hash_hex=hex(hash)
+                ):
+                    xx = ppxxh.xxh3_64(seed=seed, secret=custom_secret)
+                    single_byte_updates(xx, sanity_buffer[:length])
+                    self.assertEqual(xx.intdigest(), hash)
+                    self.assertEqual(ifb64_big(xx.digest()), hash)
+                    self.assertEqual(
+                        ifb64_big(bytes.fromhex(xx.hexdigest())), hash
+                    )
+
+    # identical to test_xxh3_64_withsecret_no_updates, but a non-zero
+    # random seed is provided.  This seed should have no effect when
+    # a secret is used.
+    def test_xxh3_64_withsecret_rs_no_updates(self):
+        for r in range(rand_count):
+            for length, seed, hash in testdata_xxh3_64_withsecret:
+                seed = random.randint(1, 0xFFFFFFFF)
+                with self.subTest(
+                    length=length, seed_hex=hex(seed), hash_hex=hex(hash)
+                ):
+                    self.assertEqual(
+                        ppxxh.xxh3_64(
+                            sanity_buffer[:length],
+                            seed=seed,
+                            secret=custom_secret,
+                        ).intdigest(),
+                        hash,
+                    )
+                    self.assertEqual(
+                        ifb64_big(
+                            ppxxh.xxh3_64(
+                                sanity_buffer[:length],
+                                seed=seed,
+                                secret=custom_secret,
+                            ).digest()
+                        ),
+                        hash,
+                    )
+                    self.assertEqual(
+                        ifb64_big(
+                            bytes.fromhex(
+                                ppxxh.xxh3_64(
+                                    sanity_buffer[:length],
+                                    seed=seed,
+                                    secret=custom_secret,
+                                ).hexdigest()
+                            )
+                        ),
+                        hash,
+                    )
+
+    # streaming oneshot
+    def test_xxh3_64_withsecret_rs_intdigest_so(self):
+        for r in range(rand_count):
+            for length, seed, hash in testdata_xxh3_64_withsecret:
+                seed = random.randint(1, 0xFFFFFFFF)
+                with self.subTest(
+                    length=length, seed_hex=hex(seed), hash_hex=hex(hash)
+                ):
+                    xx = ppxxh.xxh3_64(seed=seed, secret=custom_secret)
+                    xx.update(sanity_buffer[:length])
+                    self.assertEqual(xx.intdigest(), hash)
+                    self.assertEqual(ifb64_big(xx.digest()), hash)
+                    self.assertEqual(
+                        ifb64_big(bytes.fromhex(xx.hexdigest())), hash
+                    )
+
+    # streaming random update lengths
+    def test_xxh3_64_withsecret_rs_intdigest_sr(self):
+        for r in range(rand_count):
+            for length, seed, hash in testdata_xxh3_64_withsecret:
+                seed = random.randint(1, 0xFFFFFFFF)
+                xx = ppxxh.xxh3_64(seed=seed, secret=custom_secret)
+                nlist = random_updates(xx, sanity_buffer[:length])
+                with self.subTest(
+                    length=length,
+                    seed_hex=hex(seed),
+                    hash_hex=hex(hash),
+                    nlist=nlist,
+                ):
+                    self.assertEqual(xx.intdigest(), hash)
+                    self.assertEqual(ifb64_big(xx.digest()), hash)
+                    self.assertEqual(
+                        ifb64_big(bytes.fromhex(xx.hexdigest())), hash
+                    )
+
+    # streaming random update lengths using copies of xx
+    def test_xxh3_64_withsecret_rs_intdigest_src(self):
+        for r in range(rand_count):
+            for length, seed, hash in testdata_xxh3_64_withsecret:
+                seed = random.randint(1, 0xFFFFFFFF)
+                xx = ppxxh.xxh3_64(seed=seed, secret=custom_secret)
+                xxc, nlist = random_updates_c(xx, sanity_buffer[:length])
+                with self.subTest(
+                    length=length,
+                    seed_hex=hex(seed),
+                    hash_hex=hex(hash),
+                    nlist=nlist,
+                ):
+                    self.assertEqual(xxc.intdigest(), hash)
+                    self.assertEqual(ifb64_big(xxc.digest()), hash)
+                    self.assertEqual(
+                        ifb64_big(bytes.fromhex(xxc.hexdigest())), hash
+                    )
+                    if length != 0:
+                        # confirm that xxc != xx
+                        self.assertNotEqual(
+                            xx._total_length, xxc._total_length
+                        )
+
+    # streaming single byte updates
+    def test_xxh3_64_withsecret_rs_intdigest_ss(self):
+        for r in range(rand_count):
+            for length, seed, hash in testdata_xxh3_64_withsecret:
+                seed = random.randint(1, 0xFFFFFFFF)
+                with self.subTest(
+                    length=length, seed_hex=hex(seed), hash_hex=hex(hash)
+                ):
+                    xx = ppxxh.xxh3_64(seed=seed, secret=custom_secret)
+                    single_byte_updates(xx, sanity_buffer[:length])
+                    self.assertEqual(xx.intdigest(), hash)
+                    self.assertEqual(ifb64_big(xx.digest()), hash)
+                    self.assertEqual(
+                        ifb64_big(bytes.fromhex(xx.hexdigest())), hash
+                    )
+
 
 # name, digest_size (bytes), block_size (bytes), class
 # Note that block_size for xxh3_* is actually variable
@@ -429,6 +761,7 @@ class Test_sanity_checks(unittest.TestCase):
 info = (
     ("xxh32", 4, 16, ppxxh.xxh32),
     ("xxh64", 8, 32, ppxxh.xxh64),
+    ("xxh3_64", 8, 1024, ppxxh.xxh3_64),
 )
 
 
@@ -464,7 +797,7 @@ class Test_hashlib_compatibility(unittest.TestCase):
                 self.assertEqual(cls().block_size, block_size)
 
 
-classes = [ppxxh.xxh32, ppxxh.xxh64]
+classes = [ppxxh.xxh32, ppxxh.xxh64, ppxxh.xxh3_64]
 
 
 # Verify that errors are raised when expected.
@@ -498,6 +831,15 @@ class Test_errortests(unittest.TestCase):
         # name must in ppxxh.algorithms_available
         self.assertRaises(ValueError, ppxxh.new, "not_a_hash_name")
 
+    def test_error_64_small_secret(self):
+        # len(secret) must be at least ppxxh.xxh3_64._SECRET_SIZE_MIN
+        self.assertRaises(
+            ValueError,
+            ppxxh.xxh3_64,
+            sanity_buffer,
+            secret=custom_secret[: ppxxh.xxh3_64._SECRET_SIZE_MIN - 1],
+        )
+
     def test_error_classes_seed_not_positional(self):
         # if seed is provided, it must be given as a keyword argument,
         # not as a positional argument
@@ -508,7 +850,7 @@ class Test_errortests(unittest.TestCase):
 
 if __name__ == "__main__":
     # test docstring examples in the hash classes
-    for c in [ppxxh.xxh64]:
+    for c in [ppxxh.xxh32, ppxxh.xxh64, ppxxh.xxh3_64]:
         doctest.run_docstring_examples(c, globals())
     # perform the unittests
     unittest.main()

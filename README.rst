@@ -42,7 +42,7 @@ copy()
 
 As listed in **ppxxh.algorithms_guaranteed** and 
 **ppxxh.algorithms_guaranteed**, the hash algorithms provided are
-**xxh32**, **xxh64**.  (Others will be added soon.)
+**xxh32**, **xxh64**, **xxh3_64**.  (**xxh3_128** will be added soon.)
 
 Example
 -------
