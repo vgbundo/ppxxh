@@ -65,6 +65,8 @@ class xxh3_64:
     >>> xxh3_64(b'This is a bytes object, not a string!',
     ...         seed=2523184290).hexdigest()
     '1f33b4fa1002abab'
+
+    (see ``ppxxh.xxh3_128`` for an example using a `secret`)
     """
 
     # XXH3 Constants
@@ -298,6 +300,11 @@ class xxh3_64:
             self._secret[self._SECRET_MERGEACCS_START :],
             (self._total_length * self._P64_1) & self._M64,
         )
+
+    ####################################################################
+    # The remaining methods, as well as the XXH3 Constants and the
+    # __init__ method above are common to all xxh3_* classes.
+    ####################################################################
 
     @staticmethod
     def _s64(a, b):
