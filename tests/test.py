@@ -7,7 +7,9 @@ import unittest
 
 import ppxxh
 
-
+# These ifb*_big() functions are NOT the same as the ifb*() functions
+# defined in ppxxh._xxh3_64.  These assume b is big-endian while
+# those assume b is little-endian.
 # Convert bytes to a 32-bit big-endian unsigned integer.
 def ifb32_big(b, offset=0):
     return struct.unpack_from(">I", b, offset)[0]
@@ -16,6 +18,13 @@ def ifb32_big(b, offset=0):
 # Convert bytes to a 64-bit big-endian unsigned integer.
 def ifb64_big(b, offset=0):
     return struct.unpack_from(">Q", b, offset)[0]
+
+
+# Convert bytes to a 128-bit big-endian unsigned integer.
+def ifb128_big(b, offset=0):
+    # Because b is big-endian, unpack high64 before low64
+    high64, low64 = struct.unpack_from(">QQ", b, offset)
+    return low64 + (high64 << 64)
 
 
 print("Testing ppxxh with Python", sys.version)
@@ -752,6 +761,458 @@ class Test_sanity_checks(unittest.TestCase):
                         ifb64_big(bytes.fromhex(xx.hexdigest())), hash
                     )
 
+    def test_xxh3_128_no_updates(self):
+        for length, seed, hash in testdata_xxh3_128:
+            with self.subTest(
+                length=length,
+                seed_hex=hex(seed),
+                hash_hex=(hex(hash[0]), hex(hash[1])),
+            ):
+                self.assertEqual(
+                    ppxxh.xxh3_128(
+                        sanity_buffer[:length], seed=seed
+                    ).intdigest(),
+                    hash[0] + (hash[1] << 64),
+                )  # hash is (low64, high64)
+                self.assertEqual(
+                    ppxxh.xxh3_128(
+                        sanity_buffer[:length], seed=seed
+                    ).intdigest2(),
+                    hash,
+                )  # hash is (low64, high64)
+                self.assertEqual(
+                    ifb128_big(
+                        ppxxh.xxh3_128(
+                            sanity_buffer[:length], seed=seed
+                        ).digest()
+                    ),
+                    hash[0] + (hash[1] << 64),
+                )  # hash is (low64, high64)
+                self.assertEqual(
+                    ifb128_big(
+                        bytes.fromhex(
+                            ppxxh.xxh3_128(
+                                sanity_buffer[:length], seed=seed
+                            ).hexdigest()
+                        )
+                    ),
+                    hash[0] + (hash[1] << 64),
+                )  # hash is (low64, high64)
+
+    # streaming oneshot
+    def test_xxh3_128_intdigest_so(self):
+        for length, seed, hash in testdata_xxh3_128:
+            with self.subTest(
+                length=length,
+                seed_hex=hex(seed),
+                hash_hex=(hex(hash[0]), hex(hash[1])),
+            ):
+                xx = ppxxh.xxh3_128(seed=seed)
+                xx.update(sanity_buffer[:length])
+                self.assertEqual(
+                    xx.intdigest(), hash[0] + (hash[1] << 64)
+                )  # hash is (low64, high64)
+                self.assertEqual(
+                    xx.intdigest2(), hash
+                )  # hash is (low64, high64)
+                self.assertEqual(
+                    ifb128_big(xx.digest()), hash[0] + (hash[1] << 64)
+                )  # hash is (low64, high64)
+                self.assertEqual(
+                    ifb128_big(bytes.fromhex(xx.hexdigest())),
+                    hash[0] + (hash[1] << 64),
+                )  # hash is (low64, high64)
+
+    # streaming random update lengths
+    def test_xxh3_128_intdigest_sr(self):
+        for r in range(rand_count):
+            for length, seed, hash in testdata_xxh3_128:
+                xx = ppxxh.xxh3_128(seed=seed)
+                nlist = random_updates(xx, sanity_buffer[:length])
+                with self.subTest(
+                    length=length,
+                    seed_hex=hex(seed),
+                    hash_hex=(hex(hash[0]), hex(hash[1])),
+                    nlist=nlist,
+                ):
+                    self.assertEqual(
+                        xx.intdigest(), hash[0] + (hash[1] << 64)
+                    )  # hash is (low64, high64)
+                    self.assertEqual(
+                        xx.intdigest2(), hash
+                    )  # hash is (low64, high64)
+                    self.assertEqual(
+                        ifb128_big(xx.digest()), hash[0] + (hash[1] << 64)
+                    )  # hash is (low64, high64)
+                    self.assertEqual(
+                        ifb128_big(bytes.fromhex(xx.hexdigest())),
+                        hash[0] + (hash[1] << 64),
+                    )  # hash is (low64, high64)
+
+    # streaming random update lengths using copies of xx
+    def test_xxh3_128_intdigest_src(self):
+        for r in range(rand_count):
+            for length, seed, hash in testdata_xxh3_128:
+                xx = ppxxh.xxh3_128(seed=seed)
+                xxc, nlist = random_updates_c(xx, sanity_buffer[:length])
+                with self.subTest(
+                    length=length,
+                    seed_hex=hex(seed),
+                    hash_hex=(hex(hash[0]), hex(hash[1])),
+                    nlist=nlist,
+                ):
+                    self.assertEqual(
+                        xxc.intdigest(), hash[0] + (hash[1] << 64)
+                    )  # hash is (low64, high64)
+                    self.assertEqual(
+                        xxc.intdigest2(), hash
+                    )  # hash is (low64, high64)
+                    self.assertEqual(
+                        ifb128_big(xxc.digest()), hash[0] + (hash[1] << 64)
+                    )  # hash is (low64, high64)
+                    self.assertEqual(
+                        ifb128_big(bytes.fromhex(xxc.hexdigest())),
+                        hash[0] + (hash[1] << 64),
+                    )  # hash is (low64, high64)
+                    if length != 0:
+                        # confirm that xxc != xx
+                        self.assertNotEqual(
+                            xx._total_length, xxc._total_length
+                        )
+
+    # streaming single byte updates
+    def test_xxh3_128_intdigest_ss(self):
+        for length, seed, hash in testdata_xxh3_128:
+            with self.subTest(
+                length=length,
+                seed_hex=hex(seed),
+                hash_hex=(hex(hash[0]), hex(hash[1])),
+            ):
+                xx = ppxxh.xxh3_128(seed=seed)
+                single_byte_updates(xx, sanity_buffer[:length])
+                self.assertEqual(
+                    xx.intdigest(), hash[0] + (hash[1] << 64)
+                )  # hash is (low64, high64)
+                self.assertEqual(
+                    xx.intdigest2(), hash
+                )  # hash is (low64, high64)
+                self.assertEqual(
+                    ifb128_big(xx.digest()), hash[0] + (hash[1] << 64)
+                )  # hash is (low64, high64)
+                self.assertEqual(
+                    ifb128_big(bytes.fromhex(xx.hexdigest())),
+                    hash[0] + (hash[1] << 64),
+                )  # hash is (low64, high64)
+
+    def test_xxh3_128_withsecret_no_updates(self):
+        for length, seed, hash in testdata_xxh3_128_withsecret:
+            with self.subTest(
+                length=length,
+                seed_hex=hex(seed),
+                hash_hex=(hex(hash[0]), hex(hash[1])),
+            ):
+                self.assertEqual(
+                    ppxxh.xxh3_128(
+                        sanity_buffer[:length], seed=seed, secret=custom_secret
+                    ).intdigest(),
+                    hash[0] + (hash[1] << 64),
+                )  # hash is (low64, high64)
+                self.assertEqual(
+                    ppxxh.xxh3_128(
+                        sanity_buffer[:length], seed=seed, secret=custom_secret
+                    ).intdigest2(),
+                    hash,
+                )  # hash is (low64, high64)
+                self.assertEqual(
+                    ifb128_big(
+                        ppxxh.xxh3_128(
+                            sanity_buffer[:length],
+                            seed=seed,
+                            secret=custom_secret,
+                        ).digest()
+                    ),
+                    hash[0] + (hash[1] << 64),
+                )  # hash is (low64, high64)
+                self.assertEqual(
+                    ifb128_big(
+                        bytes.fromhex(
+                            ppxxh.xxh3_128(
+                                sanity_buffer[:length],
+                                seed=seed,
+                                secret=custom_secret,
+                            ).hexdigest()
+                        )
+                    ),
+                    hash[0] + (hash[1] << 64),
+                )  # hash is (low64, high64)
+
+    # streaming oneshot
+    def test_xxh3_128_withsecret_intdigest_so(self):
+        for length, seed, hash in testdata_xxh3_128_withsecret:
+            with self.subTest(
+                length=length,
+                seed_hex=hex(seed),
+                hash_hex=(hex(hash[0]), hex(hash[1])),
+            ):
+                xx = ppxxh.xxh3_128(seed=seed, secret=custom_secret)
+                xx.update(sanity_buffer[:length])
+                self.assertEqual(
+                    xx.intdigest(), hash[0] + (hash[1] << 64)
+                )  # hash is (low64, high64)
+                self.assertEqual(
+                    xx.intdigest2(), hash
+                )  # hash is (low64, high64)
+                self.assertEqual(
+                    ifb128_big(xx.digest()), hash[0] + (hash[1] << 64)
+                )  # hash is (low64, high64)
+                self.assertEqual(
+                    ifb128_big(bytes.fromhex(xx.hexdigest())),
+                    hash[0] + (hash[1] << 64),
+                )  # hash is (low64, high64)
+
+    # streaming random update lengths
+    def test_xxh3_128_withsecret_intdigest_sr(self):
+        for r in range(rand_count):
+            for length, seed, hash in testdata_xxh3_128_withsecret:
+                xx = ppxxh.xxh3_128(seed=seed, secret=custom_secret)
+                nlist = random_updates(xx, sanity_buffer[:length])
+                with self.subTest(
+                    length=length,
+                    seed_hex=hex(seed),
+                    hash_hex=(hex(hash[0]), hex(hash[1])),
+                    nlist=nlist,
+                ):
+                    self.assertEqual(
+                        xx.intdigest(), hash[0] + (hash[1] << 64)
+                    )  # hash is (low64, high64)
+                    self.assertEqual(
+                        xx.intdigest2(), hash
+                    )  # hash is (low64, high64)
+                    self.assertEqual(
+                        ifb128_big(xx.digest()), hash[0] + (hash[1] << 64)
+                    )  # hash is (low64, high64)
+                    self.assertEqual(
+                        ifb128_big(bytes.fromhex(xx.hexdigest())),
+                        hash[0] + (hash[1] << 64),
+                    )  # hash is (low64, high64)
+
+    # streaming random update lengths using copies of xx
+    def test_xxh3_128_withsecret_intdigest_src(self):
+        for r in range(rand_count):
+            for length, seed, hash in testdata_xxh3_128_withsecret:
+                xx = ppxxh.xxh3_128(seed=seed, secret=custom_secret)
+                xxc, nlist = random_updates_c(xx, sanity_buffer[:length])
+                with self.subTest(
+                    length=length,
+                    seed_hex=hex(seed),
+                    hash_hex=(hex(hash[0]), hex(hash[1])),
+                    nlist=nlist,
+                ):
+                    self.assertEqual(
+                        xxc.intdigest(), hash[0] + (hash[1] << 64)
+                    )  # hash is (low64, high64)
+                    self.assertEqual(
+                        xxc.intdigest2(), hash
+                    )  # hash is (low64, high64)
+                    self.assertEqual(
+                        ifb128_big(xxc.digest()), hash[0] + (hash[1] << 64)
+                    )  # hash is (low64, high64)
+                    self.assertEqual(
+                        ifb128_big(bytes.fromhex(xxc.hexdigest())),
+                        hash[0] + (hash[1] << 64),
+                    )  # hash is (low64, high64)
+                    if length != 0:
+                        # confirm that xxc != xx
+                        self.assertNotEqual(
+                            xx._total_length, xxc._total_length
+                        )
+
+    # streaming single byte updates
+    def test_xxh3_128_withsecret_intdigest_ss(self):
+        for length, seed, hash in testdata_xxh3_128_withsecret:
+            with self.subTest(
+                length=length,
+                seed_hex=hex(seed),
+                hash_hex=(hex(hash[0]), hex(hash[1])),
+            ):
+                xx = ppxxh.xxh3_128(seed=seed, secret=custom_secret)
+                single_byte_updates(xx, sanity_buffer[:length])
+                self.assertEqual(
+                    xx.intdigest(), hash[0] + (hash[1] << 64)
+                )  # hash is (low64, high64)
+                self.assertEqual(
+                    xx.intdigest2(), hash
+                )  # hash is (low64, high64)
+                self.assertEqual(
+                    ifb128_big(xx.digest()), hash[0] + (hash[1] << 64)
+                )  # hash is (low64, high64)
+                self.assertEqual(
+                    ifb128_big(bytes.fromhex(xx.hexdigest())),
+                    hash[0] + (hash[1] << 64),
+                )  # hash is (low64, high64)
+
+    # identical to test_xxh3_128_withsecret_no_updates, but a non-zero
+    # random seed is provided.  This seed should have no effect when
+    # a non-None secret is applied.
+    def test_xxh3_128_withsecret_rs_no_updates(self):
+        for r in range(rand_count):
+            for length, seed, hash in testdata_xxh3_128_withsecret:
+                seed = random.randint(1, 0xFFFFFFFF)
+                with self.subTest(
+                    length=length,
+                    seed_hex=hex(seed),
+                    hash_hex=(hex(hash[0]), hex(hash[1])),
+                ):
+                    self.assertEqual(
+                        ppxxh.xxh3_128(
+                            sanity_buffer[:length],
+                            seed=seed,
+                            secret=custom_secret,
+                        ).intdigest(),
+                        hash[0] + (hash[1] << 64),
+                    )  # hash is (low64, high64)
+                    self.assertEqual(
+                        ppxxh.xxh3_128(
+                            sanity_buffer[:length],
+                            seed=seed,
+                            secret=custom_secret,
+                        ).intdigest2(),
+                        hash,
+                    )  # hash is (low64, high64)
+                    self.assertEqual(
+                        ifb128_big(
+                            ppxxh.xxh3_128(
+                                sanity_buffer[:length],
+                                seed=seed,
+                                secret=custom_secret,
+                            ).digest()
+                        ),
+                        hash[0] + (hash[1] << 64),
+                    )  # hash is (low64, high64)
+                    self.assertEqual(
+                        ifb128_big(
+                            bytes.fromhex(
+                                ppxxh.xxh3_128(
+                                    sanity_buffer[:length],
+                                    seed=seed,
+                                    secret=custom_secret,
+                                ).hexdigest()
+                            )
+                        ),
+                        hash[0] + (hash[1] << 64),
+                    )  # hash is (low64, high64)
+
+    # streaming oneshot
+    def test_xxh3_128_withsecret_rs_intdigest_so(self):
+        for r in range(rand_count):
+            for length, seed, hash in testdata_xxh3_128_withsecret:
+                seed = random.randint(1, 0xFFFFFFFF)
+                with self.subTest(
+                    length=length,
+                    seed_hex=hex(seed),
+                    hash_hex=(hex(hash[0]), hex(hash[1])),
+                ):
+                    xx = ppxxh.xxh3_128(seed=seed, secret=custom_secret)
+                    xx.update(sanity_buffer[:length])
+                    self.assertEqual(
+                        xx.intdigest(), hash[0] + (hash[1] << 64)
+                    )  # hash is (low64, high64)
+                    self.assertEqual(
+                        xx.intdigest2(), hash
+                    )  # hash is (low64, high64)
+                    self.assertEqual(
+                        ifb128_big(xx.digest()), hash[0] + (hash[1] << 64)
+                    )  # hash is (low64, high64)
+                    self.assertEqual(
+                        ifb128_big(bytes.fromhex(xx.hexdigest())),
+                        hash[0] + (hash[1] << 64),
+                    )  # hash is (low64, high64)
+
+    # streaming random update lengths
+    def test_xxh3_128_withsecret_rs_intdigest_sr(self):
+        for r in range(rand_count):
+            for length, seed, hash in testdata_xxh3_128_withsecret:
+                seed = random.randint(1, 0xFFFFFFFF)
+                xx = ppxxh.xxh3_128(seed=seed, secret=custom_secret)
+                nlist = random_updates(xx, sanity_buffer[:length])
+                with self.subTest(
+                    length=length,
+                    seed_hex=hex(seed),
+                    hash_hex=(hex(hash[0]), hex(hash[1])),
+                    nlist=nlist,
+                ):
+                    self.assertEqual(
+                        xx.intdigest(), hash[0] + (hash[1] << 64)
+                    )  # hash is (low64, high64)
+                    self.assertEqual(
+                        xx.intdigest2(), hash
+                    )  # hash is (low64, high64)
+                    self.assertEqual(
+                        ifb128_big(xx.digest()), hash[0] + (hash[1] << 64)
+                    )  # hash is (low64, high64)
+                    self.assertEqual(
+                        ifb128_big(bytes.fromhex(xx.hexdigest())),
+                        hash[0] + (hash[1] << 64),
+                    )  # hash is (low64, high64)
+
+    # streaming random update lengths using copies of xx
+    def test_xxh3_128_withsecret_rs_intdigest_src(self):
+        for r in range(rand_count):
+            for length, seed, hash in testdata_xxh3_128_withsecret:
+                seed = random.randint(1, 0xFFFFFFFF)
+                xx = ppxxh.xxh3_128(seed=seed, secret=custom_secret)
+                xxc, nlist = random_updates_c(xx, sanity_buffer[:length])
+                with self.subTest(
+                    length=length,
+                    seed_hex=hex(seed),
+                    hash_hex=(hex(hash[0]), hex(hash[1])),
+                    nlist=nlist,
+                ):
+                    self.assertEqual(
+                        xxc.intdigest(), hash[0] + (hash[1] << 64)
+                    )  # hash is (low64, high64)
+                    self.assertEqual(
+                        xxc.intdigest2(), hash
+                    )  # hash is (low64, high64)
+                    self.assertEqual(
+                        ifb128_big(xxc.digest()), hash[0] + (hash[1] << 64)
+                    )  # hash is (low64, high64)
+                    self.assertEqual(
+                        ifb128_big(bytes.fromhex(xxc.hexdigest())),
+                        hash[0] + (hash[1] << 64),
+                    )  # hash is (low64, high64)
+                    if length != 0:
+                        # confirm that xxc != xx
+                        self.assertNotEqual(
+                            xx._total_length, xxc._total_length
+                        )
+
+    # streaming single byte updates
+    def test_xxh3_128_withsecret_rs_intdigest_ss(self):
+        for r in range(rand_count):
+            for length, seed, hash in testdata_xxh3_128_withsecret:
+                seed = random.randint(1, 0xFFFFFFFF)
+                with self.subTest(
+                    length=length,
+                    seed_hex=hex(seed),
+                    hash_hex=(hex(hash[0]), hex(hash[1])),
+                ):
+                    xx = ppxxh.xxh3_128(seed=seed, secret=custom_secret)
+                    single_byte_updates(xx, sanity_buffer[:length])
+                    self.assertEqual(
+                        xx.intdigest(), hash[0] + (hash[1] << 64)
+                    )  # hash is (low64, high64)
+                    self.assertEqual(
+                        xx.intdigest2(), hash
+                    )  # hash is (low64, high64)
+                    self.assertEqual(
+                        ifb128_big(xx.digest()), hash[0] + (hash[1] << 64)
+                    )  # hash is (low64, high64)
+                    self.assertEqual(
+                        ifb128_big(bytes.fromhex(xx.hexdigest())),
+                        hash[0] + (hash[1] << 64),
+                    )  # hash is (low64, high64)
+
 
 # name, digest_size (bytes), block_size (bytes), class
 # Note that block_size for xxh3_* is actually variable
@@ -762,6 +1223,7 @@ info = (
     ("xxh32", 4, 16, ppxxh.xxh32),
     ("xxh64", 8, 32, ppxxh.xxh64),
     ("xxh3_64", 8, 1024, ppxxh.xxh3_64),
+    ("xxh3_128", 16, 1024, ppxxh.xxh3_128),
 )
 
 
@@ -797,7 +1259,7 @@ class Test_hashlib_compatibility(unittest.TestCase):
                 self.assertEqual(cls().block_size, block_size)
 
 
-classes = [ppxxh.xxh32, ppxxh.xxh64, ppxxh.xxh3_64]
+classes = [ppxxh.xxh32, ppxxh.xxh64, ppxxh.xxh3_64, ppxxh.xxh3_128]
 
 
 # Verify that errors are raised when expected.
@@ -840,6 +1302,15 @@ class Test_errortests(unittest.TestCase):
             secret=custom_secret[: ppxxh.xxh3_64._SECRET_SIZE_MIN - 1],
         )
 
+    def test_error_128_small_secret(self):
+        # len(secret) must be at least ppxxh.xxh3_128._SECRET_SIZE_MIN
+        self.assertRaises(
+            ValueError,
+            ppxxh.xxh3_128,
+            sanity_buffer,
+            secret=custom_secret[: ppxxh.xxh3_128._SECRET_SIZE_MIN - 1],
+        )
+
     def test_error_classes_seed_not_positional(self):
         # if seed is provided, it must be given as a keyword argument,
         # not as a positional argument
@@ -850,7 +1321,7 @@ class Test_errortests(unittest.TestCase):
 
 if __name__ == "__main__":
     # test docstring examples in the hash classes
-    for c in [ppxxh.xxh32, ppxxh.xxh64, ppxxh.xxh3_64]:
+    for c in [ppxxh.xxh32, ppxxh.xxh64, ppxxh.xxh3_64, ppxxh.xxh3_128]:
         doctest.run_docstring_examples(c, globals())
     # perform the unittests
     unittest.main()
