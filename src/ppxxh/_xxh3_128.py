@@ -28,41 +28,55 @@ class xxh3_128(xxh3_64):
         provides separate functions that allow 'seed', 'secret', or
         neither to be used.
 
+    Notes
+    -----
+    While any `secret` of adequate length may be used, a high entropy
+    `secret` that looks like a bunch of random bytes is recommended.
+    ``ppxxh.generate_secret()`` is available to convert a bytes-like
+    object of arbitrary length and low entropy to a high entropy
+    `secret` well suited to use here. ``ppxxh.generate_secret()`` is
+    equivalent to the ``XXH3_generateSecret()`` function provided by the
+    `reference implementation`_.
+
     Examples
     --------
     Calculate the digest in various forms for the bytes object,
     ``b'This is a bytes object, not a string!'``.  Specify a `secret`
-    value.  If this optional value were not provided, the hash object
-    would be initialized differently and the various resulting digest
-    values would all be different.
+    value constructed with ``ppxxh.generate_secret()``.  If this
+    optional value were not provided, the hash object would be
+    initialized differently and the various resulting digest values
+    would all be different.
 
-    >>> from ppxxh import xxh3_128
-    >>> mysecret = b'This would be better if it were much more random'*3
+    >>> from ppxxh import xxh3_128, generate_secret
+    >>> secretsrc = b'arbitrary length'
+    >>> mysecret = generate_secret(secretsrc)
+    >>> print("".join("{0:0>2x}".format(b) for b in mysecret)[:40], "...")
+    71a211a2be14a0fab72bc92bba90b4f00af627a8 ...
     >>> m = xxh3_128(secret=mysecret)  # secret is optional
     >>> m.name
     'xxh3_128'
     >>> m.digest_size
     16
     >>> m.block_size
-    640
+    1024
     >>> m.update(b'This is a bytes')
     >>> m.hexdigest()  # a digest may be requested at any time
-    '09d3d926256b63f8115d70c72d815412'
+    'd12b4af36cef0a8328a1f2c1f2ddaf20'
     >>> m.update(b' object, not a string!')
     >>> m.digest()
-    b'\x10\xf6$\xf2\x85\xb1;\xf5<\xdd\x13\xf4F\x8bd\xca'
+    b'#\xf9\xd8\xa4\xdb\xbe\x19\x15y&m\n\xc8)\\\x9c'
     >>> m.hexdigest()
-    '10f624f285b13bf53cdd13f4468b64ca'
+    '23f9d8a4dbbe191579266d0ac8295c9c'
     >>> m.intdigest()
-    22545702341095050794955529224387781834
+    47820255832147300243175110347005189276
     >>> m.intdigest2()  # (low64, high64)
-    (4385683552005219530, 1222204972921338869)
+    (8729784820779539612, 2592341263101335829)
 
     Or, a more condensed way to get the same result:
 
     >>> xxh3_128(b'This is a bytes object, not a string!',
     ...           secret=mysecret).hexdigest()
-    '10f624f285b13bf53cdd13f4468b64ca'
+    '23f9d8a4dbbe191579266d0ac8295c9c'
 
     (see ``ppxxh.xxh3_64`` for an example using a `seed`)
     """
@@ -326,3 +340,42 @@ class xxh3_128(xxh3_64):
     def copy(self):
         """Return a copy (clone) of the hash object."""
         return super().copy()
+
+
+def generate_secret(customseed=None):
+    """Return a `secret` for use with ``xxh3_64`` or ``xxh3_128``.
+
+    Regardless of the length of `customseed`, the returned `secret` will
+    have a length of 192 bytes, the default `secret` length, and will
+    contain random looking bytes. If no `customseed` is provided or it
+    has a length of 0, then the default XXH3 secret is returned.
+
+    Parameters
+    ----------
+    customseed : bytes-like object, optional
+        This is used to generate the `secret`.  It may be of low entropy
+        and arbitrary size.
+
+    Notes
+    -----
+    While any `secret` of adequate length may be used with ``xxh3_64``
+    and ``xxh3_128``, a high entropy `secret` that looks like a bunch of
+    random bytes is recommended.  This function converts a bytes-like
+    object of arbitrary length and low entropy to a high entropy
+    `secret` with a length of 192 bytes that is well suited to use
+    there.
+
+    This is equivalent to the ``XXH3_generateSecret()`` function
+    provided by the `reference implementation`_.
+    """
+    if customseed is None or len(customseed) == 0:
+        return xxh3_128._ksecret[:]  # a copy of xxh3_128._ksecret
+    SSIZE = 96  # 12 * (64 // 8)
+    NB_SEGMENTS = 12  # xxh3_128._SECRET_DEFAULT_SIZE // xxh3_128.digest_size
+    seeds = (customseed * ((SSIZE // len(customseed)) + 1))[:SSIZE]
+    csdigest = xxh3_128(customseed).digest()  # 128 bytes
+    secret = csdigest
+    for segnum in range(1, NB_SEGMENTS):
+        seed = ifb64(seeds, segnum * 8) + segnum
+        secret += xxh3_128(csdigest, seed=seed).digest()
+    return secret

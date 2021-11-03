@@ -44,6 +44,12 @@ As listed in **ppxxh.algorithms_guaranteed** and
 **ppxxh.algorithms_guaranteed**, the hash algorithms provided are
 **xxh32**, **xxh64**, **xxh3_64**, and **xxh3_128**.
 
+The **ppxxh.generate_secret()** function duplicates the 
+``XXH3_generateSecret()`` function provided by the 
+`reference implementation`_ to use a low entropy bytes like object
+of arbitrary length to generate a high entropy secret well suited to use
+as the `secret` parameter of ``xxh3_64`` and ``xxh3_128``.
+
 Example
 -------
 Calculate the digest in various forms for the bytes object,

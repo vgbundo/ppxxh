@@ -33,6 +33,16 @@ class xxh3_64:
         provides separate functions that allow `seed`, `secret`, or
         neither to be used.
 
+    Notes
+    -----
+    While any `secret` of adequate length may be used, a high entropy
+    `secret` that looks like a bunch of random bytes is recommended.
+    ``ppxxh.generate_secret()`` is available to convert a bytes-like
+    object of arbitrary length and low entropy to a high entropy
+    `secret` well suited to use here. ``ppxxh.generate_secret()`` is
+    equivalent to the ``XXH3_generateSecret()`` function provided by the
+    `reference implementation`_.
+
     Examples
     --------
     Calculate the digest in various forms for the bytes object,
@@ -462,6 +472,9 @@ class xxh3_64:
     @staticmethod
     def _customsecret(seed):
         # Generate a non-default secret from a non-default seed.
+        #
+        # To generate a secret from a bytes like object of arbitrary
+        # size, see ppxxh.generate_secret()
         secret = b""
         for i in range(__class__._SECRET_DEFAULT_SIZE // 16):
             secret += struct.pack(

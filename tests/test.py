@@ -198,6 +198,12 @@ testdata_xxh3_128_withsecret = [
     ( 12, 0, ( 0xAF82F6EBA263D7D8, 0x90A3C2D839F57D0F))   # 9 - 16
 ]
 
+testdata_xxh3_generate_secret = [
+    (                                        0, [ 0xB8, 0x26, 0x83, 0x7E ]),
+    (                                        1, [ 0xA6, 0x16, 0x06, 0x7B ]),
+    (       ppxxh.xxh3_64._SECRET_SIZE_MIN - 1, [ 0xDA, 0x2A, 0x12, 0x11 ]),
+    ( ppxxh.xxh3_64._SECRET_DEFAULT_SIZE + 500, [ 0x7E, 0x48, 0x0C, 0xA7 ])
+]
 # fmt: on
 
 
@@ -1212,6 +1218,16 @@ class Test_sanity_checks(unittest.TestCase):
                         ifb128_big(bytes.fromhex(xx.hexdigest())),
                         hash[0] + (hash[1] << 64),
                     )  # hash is (low64, high64)
+
+    def test_xxh3_generate_secret(self):
+        sample_index = (0, 62, 131, 191)
+        for length, secret_samples in testdata_xxh3_generate_secret:
+            with self.subTest(
+                length=length,
+                secret_samples=[hex(secret_samples[i]) for i in range(4)],
+            ):
+                gs = ppxxh.generate_secret(sanity_buffer[:length])
+                self.assertEqual([gs[i] for i in sample_index], secret_samples)
 
 
 # name, digest_size (bytes), block_size (bytes), class
