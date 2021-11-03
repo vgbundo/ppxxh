@@ -98,4 +98,4 @@ https://github.com/Cyan4973/xxHash
 
 (Python code formatted by ``black -l 79``)
 
-Licensed under `MIT License <http://github.com/vgbundo/ppxxh/LICENSE>`_
+Licensed under `MIT License <https://github.com/vgbundo/ppxxh/blob/main/LICENSE>`_
