@@ -107,7 +107,7 @@ testdata_xxh3_64 = [
     (   80,       0, 0xBCDEFBBB2C47C90A),  # 65 - 96
     (   80, PRIME64, 0xC6DD0CB699532E73),  # 65 - 96
     # xsum_sanity_check.c does not include any tests of xxh3_64 with an input
-    # length of 97 - 128.  So, Add the following 2 lines to increase code 
+    # length of 97 - 128.  So, Add the following 2 lines to increase code
     # coverage
     (  101,       0, 0xB7F2A5219A6ADCD6),  # 97 -128
     (  101, PRIME64, 0x3F0B78B11279E491),  # 97 -128
@@ -198,8 +198,38 @@ testdata_xxh3_128_withsecret = [
     ( 12, 0, ( 0xAF82F6EBA263D7D8, 0x90A3C2D839F57D0F))   # 9 - 16
 ]
 
+testdata_xxh3_generate_secret = [
+    (                                        0, [ 0xB8, 0x26, 0x83, 0x7E ]),
+    (                                        1, [ 0xA6, 0x16, 0x06, 0x7B ]),
+    (       ppxxh.xxh3_64._SECRET_SIZE_MIN - 1, [ 0xDA, 0x2A, 0x12, 0x11 ]),
+    ( ppxxh.xxh3_64._SECRET_DEFAULT_SIZE + 500, [ 0x7E, 0x48, 0x0C, 0xA7 ])
+]
 # fmt: on
 
+# While all of the test data above is from
+# https://github.com/Cyan4973/xxHash/xxHash-dev/cli/xsum_sanity_check.c,
+# it only provides test data as integer values.  So, the following
+# hexdigest values were created using binaries from
+# https://github.com/Cyan4973/xxHash to confirm compatibility with
+# the *_canonicalFromHash() functions that are provided to convert
+# the integer hash values into arrays of unsigned char equivalent to
+# python bytes objects output by digest() methods.
+#
+# Also, all prior tests of xxh64 use a 32-bit seed.  So, a test of this
+# algorithm with a 64-bit seed is also included.
+testdata_all_digests = [
+    # class, length, seed, digest
+    # from XXH32_canonicalFromHash()
+    (ppxxh.xxh32, 0, 0, bytes.fromhex("02CC5D05")),
+    # from XXH64_canonicalFromHash()
+    (ppxxh.xxh64, 0, 0, bytes.fromhex("EF46DB3751D8E999")),
+    # from XXH64_canonicalFromHash()
+    (ppxxh.xxh64, 0, 0x27D4EB2F165667C5, bytes.fromhex("9AADFF3EE38D8E67")),
+    # from XXH64_canonicalFromHash()
+    (ppxxh.xxh3_64, 0, 0, bytes.fromhex("2D06800538D394C2")),
+    # from XXH128_canonicalFromHash()
+    (ppxxh.xxh3_128, 0, 0, bytes.fromhex("99AA06D3014798D86001C324468D497F")),
+]
 
 # Given hash object xx and data of arbitrary length, update xx with
 # the data by applying the data in a series of randomly chosen segments.
@@ -1212,6 +1242,32 @@ class Test_sanity_checks(unittest.TestCase):
                         ifb128_big(bytes.fromhex(xx.hexdigest())),
                         hash[0] + (hash[1] << 64),
                     )  # hash is (low64, high64)
+
+    def test_xxh3_generate_secret(self):
+        sample_index = (0, 62, 131, 191)
+        for length, secret_samples in testdata_xxh3_generate_secret:
+            with self.subTest(
+                length=length,
+                secret_samples=[hex(secret_samples[i]) for i in range(4)],
+            ):
+                gs = ppxxh.generate_secret(sanity_buffer[:length])
+                self.assertEqual([gs[i] for i in sample_index], secret_samples)
+
+    # While the prior tests have converted the output of digest()
+    # to an integer (or integers) for comparison, this short test
+    # compares digest() directly to canonical digest output.
+    def test_all_digests(self):
+        for cls, length, seed, digest in testdata_all_digests:
+            with self.subTest(
+                cls=cls.name,
+                length=length,
+                seed_hex=hex(seed),
+                # bytes.hex() is simpler, but not available For Python <= 3.4
+                digest_hex="".join("{0:0>2x}".format(b) for b in digest),
+            ):
+                self.assertEqual(
+                    cls(sanity_buffer[:length], seed=seed).digest(), digest
+                )
 
 
 # name, digest_size (bytes), block_size (bytes), class

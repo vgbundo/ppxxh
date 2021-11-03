@@ -39,19 +39,21 @@ from ._xxh32 import xxh32
 from ._xxh64 import xxh64
 from ._xxh3_64 import xxh3_64
 from ._xxh3_128 import xxh3_128
+from ._xxh3_128 import generate_secret
 
 __all__ = (
     "XXHASH_VERSION",
     "algorithms_guaranteed",
     "algorithms_available",
     "new",
+    "generate_secret",
     "xxh32",
     "xxh64",
     "xxh3_64",
     "xxh3_128",
 )
 
-__version__ = "0.4.0"
+__version__ = "1.0.0"
 """Version of the ppxxh module."""
 
 XXHASH_VERSION = "0.8.1"
