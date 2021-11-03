@@ -36,9 +36,15 @@ intdigest()
     Return the hash digest as an unsigned integer.
     
     This method is not part of the ``hashlib`` interface but is the 
-    typical output format of the `reference implementation`_
+    typical output format of the `reference implementation`_ (except for 
+    xxh3_128)
 copy()
     Return a copy (clone) of the hash object.
+
+The ``xxh3_128`` hash objects also have a **intdigest2()** method that 
+returns the hash digest as a pair of 64-bit unsigned integers matching 
+the typical output format of the `reference implementation`_ for this 
+hash algorithm
 
 As listed in **ppxxh.algorithms_guaranteed** and 
 **ppxxh.algorithms_guaranteed**, the hash algorithms provided are
