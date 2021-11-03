@@ -107,7 +107,7 @@ testdata_xxh3_64 = [
     (   80,       0, 0xBCDEFBBB2C47C90A),  # 65 - 96
     (   80, PRIME64, 0xC6DD0CB699532E73),  # 65 - 96
     # xsum_sanity_check.c does not include any tests of xxh3_64 with an input
-    # length of 97 - 128.  So, Add the following 2 lines to increase code 
+    # length of 97 - 128.  So, Add the following 2 lines to increase code
     # coverage
     (  101,       0, 0xB7F2A5219A6ADCD6),  # 97 -128
     (  101, PRIME64, 0x3F0B78B11279E491),  # 97 -128

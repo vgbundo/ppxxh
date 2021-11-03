@@ -53,7 +53,7 @@ __all__ = (
     "xxh3_128",
 )
 
-__version__ = "0.5.2"
+__version__ = "0.5.3"
 """Version of the ppxxh module."""
 
 XXHASH_VERSION = "0.8.1"
