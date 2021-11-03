@@ -56,7 +56,7 @@ __all__ = (
 __version__ = "1.0.0"
 """Version of the ppxxh module."""
 
-XXHASH_VERSION = "0.8.1"
+XXHASH_VERSION = "0.8.0"
 """Compatible version of the xxHash library
 
 Binaries compiled from the `reference implementation`_ are not used, but
