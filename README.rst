@@ -8,7 +8,7 @@ algorithms.
 This pure python implementation of
 `Yann Collet's XXHASH <https://github.com/Cyan4973/xxHash>`_ family of
 non-cryptographic hash algorithms with no dependencies outside of the
-python standard library is significantly slower than version 0.8.1 of
+python standard library is significantly slower than version 0.8.0 of
 the `reference implementation`_ of these hash algorithms, but they
 produce the same outputs given the same inputs. This equality of outputs
 is checked with tests that duplicate portions of `xsum_sanity_check.c`
