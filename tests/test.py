@@ -206,6 +206,30 @@ testdata_xxh3_generate_secret = [
 ]
 # fmt: on
 
+# While all of the test data above is from
+# https://github.com/Cyan4973/xxHash/xxHash-dev/cli/xsum_sanity_check.c,
+# it only provides test data as integer values.  So, the following
+# hexdigest values were created using binaries from
+# https://github.com/Cyan4973/xxHash to confirm compatibility with
+# the *_canonicalFromHash() functions that are provided to convert
+# the integer hash values into arrays of unsigned char equivalent to
+# python bytes objects output by digest() methods.
+#
+# Also, all prior tests of xxh64 use a 32-bit seed.  So, a test of this
+# algorithm with a 64-bit seed is also included.
+testdata_all_digests = [
+    # class, length, seed, digest
+    # from XXH32_canonicalFromHash()
+    (ppxxh.xxh32, 0, 0, bytes.fromhex("02CC5D05")),
+    # from XXH64_canonicalFromHash()
+    (ppxxh.xxh64, 0, 0, bytes.fromhex("EF46DB3751D8E999")),
+    # from XXH64_canonicalFromHash()
+    (ppxxh.xxh64, 0, 0x27D4EB2F165667C5, bytes.fromhex("9AADFF3EE38D8E67")),
+    # from XXH64_canonicalFromHash()
+    (ppxxh.xxh3_64, 0, 0, bytes.fromhex("2D06800538D394C2")),
+    # from XXH128_canonicalFromHash()
+    (ppxxh.xxh3_128, 0, 0, bytes.fromhex("99AA06D3014798D86001C324468D497F")),
+]
 
 # Given hash object xx and data of arbitrary length, update xx with
 # the data by applying the data in a series of randomly chosen segments.
@@ -1228,6 +1252,22 @@ class Test_sanity_checks(unittest.TestCase):
             ):
                 gs = ppxxh.generate_secret(sanity_buffer[:length])
                 self.assertEqual([gs[i] for i in sample_index], secret_samples)
+
+    # While the prior tests have converted the output of digest()
+    # to an integer (or integers) for comparison, this short test
+    # compares digest() directly to canonical digest output.
+    def test_all_digests(self):
+        for cls, length, seed, digest in testdata_all_digests:
+            with self.subTest(
+                cls=cls.name,
+                length=length,
+                seed_hex=hex(seed),
+                # bytes.hex() is simpler, but not available For Python <= 3.4
+                digest_hex="".join("{0:0>2x}".format(b) for b in digest),
+            ):
+                self.assertEqual(
+                    cls(sanity_buffer[:length], seed=seed).digest(), digest
+                )
 
 
 # name, digest_size (bytes), block_size (bytes), class
